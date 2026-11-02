@@ -1,0 +1,7 @@
+1 24 "exe.manifest"
+#ifdef BQN_PACK_USE_ICON
+#ifndef BQN_PACK_ICON_PATH
+#define BQN_PACK_ICON_PATH "../3rd/BQN.ico"
+#endif
+2 ICON BQN_PACK_ICON_PATH
+#endif

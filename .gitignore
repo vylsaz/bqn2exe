@@ -1,0 +1,11 @@
+.vscode/
+tb/
+.cbqn_repl_history
+*.exe
+*.obj
+*.inc
+*.o
+*.a
+*.dll
+*.lib
+*.pdb
