@@ -10,9 +10,12 @@ bins ← ⟨
     exeRc ← bin At"exe.rc.o"
 ⟩
 
-{∧´Exists¨bins? @;
-    !"please run 'prepare.bqn' to populate the bin folder"
-}
+extraBins ← ⟨
+    physfsLib ← bin At"libphysfs.a"
+    physfsLoader ← bin At"physfs-loader.o"
+⟩
+
+hasPhysFs ⇐ ∧´Exists¨extraBins
 
 mingwbin ← At"bin"At"llvm-mingw"At"bin"
 gcc ← {Exists mingwbin?
@@ -22,6 +25,7 @@ gcc ← {Exists mingwbin?
 
 nl ← @+10
 WinSepToSep ← {'/'¨⌾(('\'=𝕩)⊸/)𝕩}
+SepToWinSep ← {'\'¨⌾(('/'=𝕩)⊸/)𝕩}
 Quote ← {∨´𝕩∊" "? "'"∾𝕩∾"'"; 𝕩}
 EndsWith ← {𝕨≡𝕩∾˜𝕨↑˜0⌈𝕨-○≠𝕩}
 StartsWith ← (⊣≡⌊○≠↑⊢)˜
@@ -57,14 +61,16 @@ MakeOpts ← {
     path ⇐ •wdpath At "path" GetOr ""
     Rel ← path⊸At
 
-    input ⇐ Rel DropThis 𝕩.input
-    output ⇐ {𝕩 EndsWith ".exe"? 𝕩; 𝕩∾".exe"}{
+    input ⇐ SepToWinSep Rel DropThis 𝕩.input
+    output ⇐ SepToWinSep {𝕩 EndsWith ".exe"? 𝕩; 𝕩∾".exe"}{
         o ← "output" GetOr (Name input) DropIfEndsWith ".bqn"
         {∨´'/'=WinSepToSep o? Rel DropThis o; (Parent input)At o}
     }
     cc ⇐ "cc" GetOr gcc
     ccOpts ⇐ "ccOpts" GetOr ⟨⟩
     static ⇐ "static" GetOr 0
+
+    physfs ⇐ {hasPhysFs? "physfs" GetOr 0; 0}
 
     verbose ⇐ "verbose" GetOr 0
     print ← {verbose? •out; @˙}
@@ -82,6 +88,8 @@ MakeOpts ← {
 Bqn2Exe ⇐ {
     o ← MakeOpts 𝕩
 
+    {∧´Exists¨bins? @; !"please run 'prepare.bqn' to populate the bin folder"}
+
     o.Info "Generating include file"
     inc ← o.path TempPath ""‿".inc"
     inc •FChars "static const char bqn2exeInc[]" GenInc •FBytes o.input
@@ -89,10 +97,12 @@ Bqn2Exe ⇐ {
     o.Info "Compiling '"∾o.output∾"'"
     output ← ⟨"-o", o.output⟩
     inputs ← ⟨srcMain, exeRc⟩∾<{o.static? cbqnLib; cbqnDll}
+    extras ← {o.physfs? ⟨physfsLib, physfsLoader, "-DBQN2EXE_CUSTOM_LOADER"⟩;
+        ⟨⟩}
     cflags ← ⟨"-Wall", "-pthread", "-static", "-municode"⟩
     incDef ← ⟨"-DBQN2EXE_INC="""∾(WinSepToSep inc)∾""""⟩
 
-    {𝕊: Remove inc} o._CmdWith ⟨o.cc⟩∾output∾inputs∾o.ccOpts∾incDef∾cflags
+    {𝕊: Remove inc} o._CmdWith ⟨o.cc⟩∾output∾inputs∾extras∾o.ccOpts∾incDef∾cflags
 
     {
         ¬o.static?
@@ -117,8 +127,10 @@ Options:
     -o, --output <file>     Output <file>
     -s, --static            Use static libcbqn
     -v, --verbose           Display details
-        --cc <compiler>     Use C compiler <compiler>
-"
+        --cc <compiler>     Use C compiler <compiler>"∾{hasPhysFs?"
+        --physfs            Use PhysFs loader
+";"
+"}
 
     myErrs ← 0⥊<""
     Err ← {myErrs ∾↩ <•ToUtf8 "Error: "∾𝕩∾nl}
@@ -133,7 +145,9 @@ Options:
         "static"‿'s'
         "verbose"‿'v'
         "cc"‿@
-    ⟩
+    ⟩∾{hasPhysFs?
+        ⟨"physfs"‿@⟩; ⟨⟩
+    }
 
     args ← •args
     {⟨⟩≡args? Help@; @}
@@ -149,13 +163,15 @@ Options:
 
     HandleArg ← {short 𝕊 arg:
         a ← short⊑¨options
+        Unknown ← {𝕊: Err"Unknown command '"∾((2-short)⥊"-")∾arg∾"'"}
         {
             "help": Help@;
             "output": 𝕩 MyArgsPush ShiftArgs@;
             "static": 𝕩 MyArgsPush 1;
             "verbose": 𝕩 MyArgsPush 1;
             "cc": 𝕩 MyArgsPush ShiftArgs@;
-            Err"Unknown command '"∾((2-short)⥊"-")∾arg∾"'"
+            "physfs": {hasPhysFs? 𝕩 MyArgsPush 1; Unknown@} 𝕩;
+            Unknown@
         }(⊑a⊐<arg)⊑(⊑¨options)∾<@
     }
 
@@ -180,7 +196,8 @@ Options:
         path ⇐ •wdpath
         input ⇐ {@: Err"input is not set";
             {¬Exists 𝕩? Err"cannot find input file '"∾𝕩∾"'";
-            'd'≡Type 𝕩? Err"cannot find input file '"∾𝕩∾"'"; @}path At DropThis 𝕩
+            'd'≡Type 𝕩? Err"cannot find input file '"∾𝕩∾"'";
+            @}SepToWinSep path At DropThis 𝕩
             𝕩
         } MyArgsGet1 "input"
         output ⇐ MyArgsGet1 "output"
@@ -188,5 +205,6 @@ Options:
         verbose ⇐ MyArgsGet1 "verbose"
         cc ⇐ MyArgsGet1 "cc"
         ccOpts ⇐ MyArgsGetN "ccOpts"
+        physfs ⇐ {hasPhysFs? MyArgsGet1 "physfs"; @}
     }
 }
