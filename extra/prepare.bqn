@@ -1,10 +1,13 @@
-⟨At, Exists, RealPath⟩ ← •file
+⟨At, Exists, List, RealPath⟩ ← •file
 ⟨Exec, CopyTo⟩ ← •Import "../utils/common.bqn"
 ⟨GenInc⟩ ← •Import "../bqn2exe.bqn"
 Out ← •Out
 
 physfs ← At"physfs"
-{Exists physfs? @; !"run 'git submodule update --init --recursive'"}
+{ Exists physfs? @
+; 0<≠List physfs? @
+; !"run 'git submodule update --init --recursive'"
+}
 
 Out "Step 1: Get Cmake (optional)"
 •Import "../utils/get-cmake.bqn"
