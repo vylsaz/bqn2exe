@@ -4,8 +4,7 @@
 Out ← •Out
 
 physfs ← At"physfs"
-{ Exists physfs? @
-; 0<≠List physfs? @
+{ Exists physfs? 0<≠List physfs? @
 ; !"run 'git submodule update --init --recursive'"
 }
 
